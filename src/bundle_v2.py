@@ -1,4 +1,5 @@
 import struct
+import zlib
 
 
 def read(data: bytes, offset: int, format: str) -> int:
@@ -55,9 +56,12 @@ class BundleV2:
             resource_entry.imports_offset = read(data, resournce_entry_offset + 0x34, 'L')
             resource_entry.imports_count = read(data, resournce_entry_offset + 0x3C, 'H')
             for j in range(3):
-                size = read(data, resournce_entry_offset + 0x1C + j * 0x4, 'L')
-                offset = read(data, resournce_entry_offset + 0x28 + j * 0x4, 'L')
-                resource_entry.data.append(data[resource_data_offsets[j] + offset:resource_data_offsets[j] + offset + size])
+                resource_size = read(data, resournce_entry_offset + 0x1C + j * 0x4, 'L')
+                resource_offset = read(data, resournce_entry_offset + 0x28 + j * 0x4, 'L')
+                resource_data = data[resource_data_offsets[j] + resource_offset:resource_data_offsets[j] + resource_offset + resource_size]
+                if self.is_compressed:
+                    resource_data = zlib.decompress(resource_data)
+                resource_entry.data.append(resource_data)
 
             self.resource_entries[resource_id] = resource_entry
     
