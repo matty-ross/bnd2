@@ -2,12 +2,6 @@ import struct
 import zlib
 
 
-def read(data: bytes, offset: int, format: str) -> int:
-    size = struct.calcsize(f'<{format}')
-    buff = data[offset:offset + size]
-    return struct.unpack(f'<{format}', buff)[0]
-
-
 class BundleV2:
 
     class ResourceEntry:
@@ -26,44 +20,49 @@ class BundleV2:
     
     def load(self, file_name: str) -> None:
         with open(file_name, 'rb') as fp:
-            data = fp.read()    
-        
-        assert data[0x0:0x4] == b'bnd2', "MagicNumber mismatch."
+            fp.seek(0x0)
+            assert fp.read(4) == b'bnd2', "MagicNumber mismatch."
 
-        flags = read(data, 0x24, 'L')
-        
-        self.is_compressed = (flags & 0x1) != 0
-        if (flags & 0x8) != 0:
-            debug_data_begin_offset = read(data, 0xC, 'L')
-            debug_data_end_offset = data.find(b'\x00', debug_data_begin_offset)
-            self.debug_data = data[debug_data_begin_offset:debug_data_end_offset].decode()
-
-        resource_entries_count = read(data, 0x10, 'L')
-        resource_entries_offset = read(data, 0x14, 'L')
-        resource_data_offsets = [
-            read(data, 0x18, 'L'),
-            read(data, 0x1C, 'L'),
-            read(data, 0x20, 'L'),
-        ]
-        
-        for i in range(resource_entries_count):
-            resournce_entry_offset = resource_entries_offset + i * 0x40
+            version = struct.unpack('<L', fp.read(4))[0]
+            platform = struct.unpack('<L', fp.read(4))[0]
+            debug_data_offset = struct.unpack('<L', fp.read(4))[0]
+            resource_entries_count = struct.unpack('<L', fp.read(4))[0]
+            resource_entries_offset = struct.unpack('<L', fp.read(4))[0]
+            resource_data_offsets = struct.unpack('<LLL', fp.read(3 * 4))
+            flags = struct.unpack('<L', fp.read(4))[0]
             
-            resource_id = read(data, resournce_entry_offset + 0x0, 'L')
-            
-            resource_entry = BundleV2.ResourceEntry()
-            resource_entry.type = read(data, resournce_entry_offset + 0x38, 'L')
-            resource_entry.imports_offset = read(data, resournce_entry_offset + 0x34, 'L')
-            resource_entry.imports_count = read(data, resournce_entry_offset + 0x3C, 'H')
-            for j in range(3):
-                resource_size = read(data, resournce_entry_offset + 0x1C + j * 0x4, 'L')
-                resource_offset = read(data, resournce_entry_offset + 0x28 + j * 0x4, 'L')
-                resource_data = data[resource_data_offsets[j] + resource_offset:resource_data_offsets[j] + resource_offset + resource_size]
-                if self.is_compressed:
-                    resource_data = zlib.decompress(resource_data)
-                resource_entry.data.append(resource_data)
+            self.is_compressed = (flags & 0x1) != 0
+            if (flags & 0x8) != 0:
+                fp.seek(debug_data_offset)
+                debug_data_size = resource_entries_offset - debug_data_offset
+                self.debug_data = fp.read(debug_data_size).decode().strip('\x00')
+        
+            for i in range(resource_entries_count):
+                fp.seek(resource_entries_offset + i * 0x40)
+                
+                resource_id = struct.unpack('<Q', fp.read(8))[0]
+                imports_hash = struct.unpack('<Q', fp.read(8))[0]
+                uncompressed_sizes_and_alignments = struct.unpack('<LLL', fp.read(3 * 4))
+                sizes_and_alignments_on_disk = struct.unpack('<LLL', fp.read(3 * 4))
+                disk_offsets = struct.unpack('<LLL', fp.read(3 * 4))
+                imports_offset = struct.unpack('<L', fp.read(4))[0]
+                resource_type_id = struct.unpack('<L', fp.read(4))[0]
+                imports_count = struct.unpack('<H', fp.read(2))[0]
+                flags = struct.unpack('B', fp.read(1))[0]
+                stream_index = struct.unpack('B', fp.read(1))[0]
 
-            self.resource_entries[resource_id] = resource_entry
+                resource_entry = BundleV2.ResourceEntry()
+                resource_entry.type = resource_type_id
+                resource_entry.imports_offset = imports_offset
+                resource_entry.imports_count = imports_count
+                for j in range(3):
+                    fp.seek(resource_data_offsets[j] + disk_offsets[j])
+                    data = fp.read(sizes_and_alignments_on_disk[j])
+                    if data and self.is_compressed:
+                        data = zlib.decompress(data)
+                    resource_entry.data.append(data)
+
+                self.resource_entries[resource_id] = resource_entry
     
     
     def save(self, file_name: str) -> None:
