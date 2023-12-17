@@ -9,12 +9,12 @@ class BundleV2:
             self.type: int = None
             self.imports_offset: int = None
             self.imports_count: int = None
-            self.data: list[bytes] = []
+            self.data: list[bytearray] = []
 
     
     def __init__(self):
         self.is_compressed: bool = None
-        self.debug_data: str = None
+        self.debug_data: bytes = None
         self.resource_entries: dict[int, BundleV2.ResourceEntry] = {}
 
     
@@ -35,7 +35,7 @@ class BundleV2:
             if (flags & 0x8) != 0:
                 fp.seek(debug_data_offset)
                 debug_data_size = resource_entries_offset - debug_data_offset
-                self.debug_data = fp.read(debug_data_size).decode().strip('\x00')
+                self.debug_data = fp.read(debug_data_size).strip(b'\x00')
         
             for i in range(resource_entries_count):
                 fp.seek(resource_entries_offset + i * 0x40)
@@ -60,10 +60,15 @@ class BundleV2:
                     data = fp.read(sizes_and_alignments_on_disk[j])
                     if data and self.is_compressed:
                         data = zlib.decompress(data)
-                    resource_entry.data.append(data)
+                    resource_entry.data.append(bytearray(data))
 
                 self.resource_entries[resource_id] = resource_entry
     
     
     def save(self, file_name: str) -> None:
         pass
+
+
+    def dump_debug_data(self, file_name: str) -> None:
+        with open(file_name, 'wb') as fp:
+            fp.write(self.debug_data)
