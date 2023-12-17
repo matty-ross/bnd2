@@ -2,6 +2,12 @@ import struct
 import zlib
 
 
+def align_offset(offset: int) -> int:
+    if (offset % 0x10) != 0:
+        offset += 0x10 - (offset % 0x10)
+    return offset
+
+
 class BundleV2:
 
     class ResourceEntry:
@@ -13,8 +19,8 @@ class BundleV2:
 
     
     def __init__(self):
-        self.is_compressed: bool = None
-        self.debug_data: bytes = None
+        self.is_compressed: bool = False
+        self.debug_data: bytes = b''
         self.resource_entries: dict[int, BundleV2.ResourceEntry] = {}
 
     
@@ -66,7 +72,47 @@ class BundleV2:
     
     
     def save(self, file_name: str) -> None:
-        pass
+        with open(file_name, 'wb') as fp:
+            fp.seek(0x0)
+            fp.write(b'bnd2')
+            
+            debug_data_offset = align_offset(0x28)
+            resource_entries_offset = align_offset(debug_data_offset + len(self.debug_data))
+            resource_data_offsets = 0x0, 0x0, 0x0
+            
+            flags = 0x6
+            if self.is_compressed:
+                flags |= 0x1
+            if self.debug_data:
+                flags |= 0x8
+            
+            fp.write(struct.pack('<L', 2))
+            fp.write(struct.pack('<L', 1))
+            fp.write(struct.pack('<L', debug_data_offset))
+            fp.write(struct.pack('<L', len(self.resource_entries)))
+            fp.write(struct.pack('<L', resource_entries_offset))
+            fp.write(struct.pack('<LLL', *resource_data_offsets))
+            fp.write(struct.pack('<L', flags))
+
+            fp.seek(align_offset(fp.tell()))
+            fp.write(self.debug_data)
+            
+            fp.seek(align_offset(fp.tell()))
+            for resource_id, resource_entry in sorted(self.resource_entries.items()):
+                fp.write(struct.pack('<Q', resource_id))
+                fp.write(struct.pack('<Q', 0)) # TODO: calculate the import hash
+                # TODO: calculate the sizes and offsets
+                for i in range(3):
+                    fp.write(struct.pack('<L', 0))
+                for i in range(3):
+                    fp.write(struct.pack('<L', 0))
+                for i in range(3):
+                    fp.write(struct.pack('<L', 0))
+                fp.write(struct.pack('<L', resource_entry.imports_offset))
+                fp.write(struct.pack('<L', resource_entry.type))
+                fp.write(struct.pack('<H', resource_entry.imports_count))
+                fp.write(struct.pack('B', 0))
+                fp.write(struct.pack('B', 0))
 
 
     def dump_debug_data(self, file_name: str) -> None:
