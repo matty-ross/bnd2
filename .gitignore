@@ -1,4 +1,2 @@
 __pycache__/
-bundle.input
-bundle.output
-debug_data.xml
+data/

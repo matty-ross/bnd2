@@ -3,9 +3,9 @@ from bundle_v2 import BundleV2
 
 def main() -> None:
     bundle = BundleV2()
-    bundle.load('bundle.input')
-    bundle.dump_debug_data('debug_data.xml')
-    bundle.save('bundle.output')
+    bundle.load('data/bundle.input')
+    bundle.dump_debug_data('data/debug_data.xml')
+    bundle.save('data/bundle.output')
 
 
 if __name__ == '__main__':
