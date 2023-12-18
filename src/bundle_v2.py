@@ -1,5 +1,6 @@
 import struct
-import zlib
+
+from resource_entry import ResourceEntry
 
 
 def align_offset(offset: int) -> int:
@@ -9,19 +10,11 @@ def align_offset(offset: int) -> int:
 
 
 class BundleV2:
-
-    class ResourceEntry:
-        def __init__(self):
-            self.type: int = None
-            self.imports_offset: int = None
-            self.imports_count: int = None
-            self.data: list[bytearray] = []
-
     
     def __init__(self):
         self.is_compressed: bool = False
         self.debug_data: bytes = b''
-        self.resource_entries: dict[int, BundleV2.ResourceEntry] = {}
+        self.resource_entries: dict[int, ResourceEntry] = {}
 
     
     def load(self, file_name: str) -> None:
@@ -57,17 +50,16 @@ class BundleV2:
                 flags = struct.unpack('B', fp.read(1))[0]
                 stream_index = struct.unpack('B', fp.read(1))[0]
 
-                resource_entry = BundleV2.ResourceEntry()
+                resource_entry = ResourceEntry()
                 resource_entry.type = resource_type_id
                 resource_entry.imports_offset = imports_offset
                 resource_entry.imports_count = imports_count
                 for j in range(3):
                     fp.seek(resource_data_offsets[j] + disk_offsets[j])
-                    data = fp.read(sizes_and_alignments_on_disk[j])
-                    if data and self.is_compressed:
-                        data = zlib.decompress(data)
-                    resource_entry.data.append(bytearray(data))
-
+                    resource_entry.data[j] = fp.read(sizes_and_alignments_on_disk[j])
+                if self.is_compressed:
+                    resource_entry.decompress_data()
+                
                 self.resource_entries[resource_id] = resource_entry
     
     
@@ -100,14 +92,15 @@ class BundleV2:
             fp.seek(align_offset(fp.tell()))
             for resource_id, resource_entry in sorted(self.resource_entries.items()):
                 fp.write(struct.pack('<Q', resource_id))
-                fp.write(struct.pack('<Q', 0)) # TODO: calculate the import hash
-                # TODO: calculate the sizes and offsets
+                fp.write(struct.pack('<Q', resource_entry.get_imports_hash()))
                 for i in range(3):
-                    fp.write(struct.pack('<L', 0))
+                    fp.write(struct.pack('<L', len(resource_entry.data[i])))
+                if self.is_compressed:
+                    resource_entry.compress_data()
                 for i in range(3):
-                    fp.write(struct.pack('<L', 0))
+                    fp.write(struct.pack('<L', len(resource_entry.data[i])))
                 for i in range(3):
-                    fp.write(struct.pack('<L', 0))
+                    fp.write(struct.pack('<L', 0)) # TODO: store the data and calculate offset (len without the new data)
                 fp.write(struct.pack('<L', resource_entry.imports_offset))
                 fp.write(struct.pack('<L', resource_entry.type))
                 fp.write(struct.pack('<H', resource_entry.imports_count))
