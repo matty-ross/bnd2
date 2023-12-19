@@ -88,11 +88,14 @@ class BundleV2:
 
             fp.seek(align_offset(fp.tell()))
             fp.write(self.debug_data)
+
+            resource_data = [b'', b'', b'']
             
             fp.seek(align_offset(fp.tell()))
             for resource_id, resource_entry in sorted(self.resource_entries.items()):
                 fp.write(struct.pack('<Q', resource_id))
                 fp.write(struct.pack('<Q', resource_entry.get_imports_hash()))
+                
                 for i in range(3):
                     fp.write(struct.pack('<L', len(resource_entry.data[i])))
                 if self.is_compressed:
@@ -100,12 +103,18 @@ class BundleV2:
                 for i in range(3):
                     fp.write(struct.pack('<L', len(resource_entry.data[i])))
                 for i in range(3):
-                    fp.write(struct.pack('<L', 0)) # TODO: store the data and calculate offset (len without the new data)
+                    fp.write(struct.pack('<L', len(resource_data[i])))
+                    resource_data[i] += resource_entry.data[i]
+                    resource_data[i] += bytes(align_offset(len(resource_data[i])) - len(resource_data[i]))
+                
                 fp.write(struct.pack('<L', resource_entry.imports_offset))
                 fp.write(struct.pack('<L', resource_entry.type))
                 fp.write(struct.pack('<H', resource_entry.imports_count))
                 fp.write(struct.pack('B', 0))
-                fp.write(struct.pack('B', 0))
+                fp.write(struct.pack('B', 0))  
+
+            for i in range(3):
+                fp.write(resource_data[i])
 
 
     def dump_debug_data(self, file_name: str) -> None:
