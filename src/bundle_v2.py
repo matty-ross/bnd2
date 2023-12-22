@@ -5,33 +5,23 @@ from dataclasses import dataclass, field
 
 
 @dataclass
+class ImportEntry:
+    id: int = None
+    offset: int = None
+
+
+@dataclass
 class ResourceEntry:
     id: int = None
     type: int = None
-    imports_offset: int = None
-    imports_count: int = None
+    import_entries: list[ImportEntry] = field(default_factory=list)    
     data: list[bytes] = field(default_factory=list)
-
-    def get_import_entry(self, index: int) -> bytes:
-        if index >= self.imports_count:
-            raise IndexError()
-        import_entries = self.data[0][self.imports_offset:]
-        return import_entries[index * 0x10 + 0x0:index * 0x10 + 0x10]
-    
-    def set_import_entry(self, index: int, import_entry: bytes) -> None:
-        if index >= self.imports_count:
-            raise IndexError()
-        data = bytearray(self.data[0])
-        import_entries = data[self.imports_offset:]
-        import_entries[index * 0x10 + 0x0:index * 0x10 + 0x10] = import_entry
-        data[self.imports_offset:] = import_entries
-        self.data[0] = data
 
 
 class BundleV2:
     
     def __init__(self):
-        self.is_compressed: bool = False
+        self.compressed: bool = False
         self.debug_data: bytes = b''
         self.resource_entries: list[ResourceEntry] = []
 
@@ -49,7 +39,7 @@ class BundleV2:
             resource_data_offsets = struct.unpack('<LLL', fp.read(3 * 4))
             flags = struct.unpack('<L', fp.read(4))[0]
             
-            self.is_compressed = (flags & 0x1) != 0
+            self.compressed = (flags & 0x1) != 0
             if (flags & 0x8) != 0:
                 fp.seek(debug_data_offset)
                 debug_data_size = resource_entries_offset - debug_data_offset
@@ -72,14 +62,23 @@ class BundleV2:
                 resource_entry = ResourceEntry()
                 resource_entry.id = resource_id
                 resource_entry.type = resource_type_id
-                resource_entry.imports_offset = imports_offset
-                resource_entry.imports_count = imports_count
                 for j in range(3):
                     fp.seek(resource_data_offsets[j] + disk_offsets[j])
                     data = fp.read(sizes_and_alignments_on_disk[j][0])
-                    if self.is_compressed and data:
+                    if self.compressed and data:
                         data = zlib.decompress(data)
                     resource_entry.data.append(data)
+
+                for j in range(imports_count):
+                    data = resource_entry.data[0]
+                    import_entry_offset = imports_offset + j * 0x10
+                    
+                    import_entry = ImportEntry()
+                    import_entry.id = struct.unpack('<Q', data[import_entry_offset + 0x0:import_entry_offset + 0x8])[0]
+                    import_entry.offset = struct.unpack('<L', data[import_entry_offset + 0x8:import_entry_offset + 0xC])[0]
+                    resource_entry.import_entries.append(import_entry)
+                
+                resource_entry.data[0] = data[:imports_offset]
                 
                 self.resource_entries.append(resource_entry)
     
@@ -93,7 +92,7 @@ class BundleV2:
             resource_entries_offset = BundleV2._align_offset(debug_data_offset + len(self.debug_data), 0x10)
             
             flags = 0x6
-            if self.is_compressed:
+            if self.compressed:
                 flags |= 0x1
             if self.debug_data:
                 flags |= 0x8
@@ -124,18 +123,23 @@ class BundleV2:
                 
                 for i in range(3):
                     data = resource_entry.data[i]
-                    if self.is_compressed and data:
+                    if i == 0 and data:
+                        for import_entry in resource_entry.import_entries:
+                            data += struct.pack('<Q', import_entry.id)
+                            data += struct.pack('<L', import_entry.offset)
+                            data += bytes(BundleV2._align_offset(len(data), 0x10) - len(data))
+                    if self.compressed and data:
                         data = zlib.compress(data, zlib.Z_BEST_COMPRESSION)
                     fp.write(struct.pack('<L', BundleV2._pack_size_and_alignment(len(data), 0x1)))
                     disk_offsets[i] = len(resource_data[i])
                     resource_data[i] += data + bytes(BundleV2._align_offset(len(data), 0x10) - len(data))
-                                    
+                
                 for i in range(3):
                     fp.write(struct.pack('<L', disk_offsets[i]))
                 
-                fp.write(struct.pack('<L', resource_entry.imports_offset))
+                fp.write(struct.pack('<L', len(resource_entry.data[0])))
                 fp.write(struct.pack('<L', resource_entry.type))
-                fp.write(struct.pack('<H', resource_entry.imports_count))
+                fp.write(struct.pack('<H', len(resource_entry.import_entries)))
                 fp.write(struct.pack('B', 0))
                 fp.write(struct.pack('B', 0))
 
@@ -150,20 +154,17 @@ class BundleV2:
 
     def dump_debug_data(self, file_name: str) -> None:
         with open(file_name, 'wb') as fp:
-            fp.write(self.debug_data)
+            if self.debug_data:
+                fp.write(self.debug_data)
 
 
     def change_resource_id(self, old_id: int, new_id: int) -> None:
         for resource_entry in self.resource_entries:
             if resource_entry.id == old_id:
                 resource_entry.id = new_id
-                
-            for i in range(resource_entry.imports_count):
-                import_entry = bytearray(resource_entry.get_import_entry(i))
-                import_id = struct.unpack('<Q', import_entry[0x0:0x8])[0]
-                if import_id == old_id:
-                    import_entry[0x0:0x8] = struct.pack('<Q', new_id)
-                    resource_entry.set_import_entry(i, import_entry)
+            for import_entry in resource_entry.import_entries:
+                if import_entry.id == old_id:
+                    import_entry.id = new_id
 
 
     @staticmethod
@@ -191,8 +192,6 @@ class BundleV2:
     @staticmethod
     def _compute_imports_hash(resource_entry: ResourceEntry) -> int:
         imports_hash = 0x0000000000000000
-        for i in range(resource_entry.imports_count):
-            import_entry = resource_entry.get_import_entry(i)
-            import_id = struct.unpack('<Q', import_entry[0x0:0x8])[0]
-            imports_hash |= import_id
+        for import_entry in resource_entry.import_entries:
+            imports_hash |= import_entry.id
         return imports_hash
