@@ -12,6 +12,21 @@ class ResourceEntry:
     imports_count: int = None
     data: list[bytes] = field(default_factory=list)
 
+    def get_import_entry(self, index: int) -> bytes:
+        if index >= self.imports_count:
+            raise IndexError()
+        import_entries = self.data[0][self.imports_offset:]
+        return import_entries[index * 0x10 + 0x0:index * 0x10 + 0x10]
+    
+    def set_import_entry(self, index: int, import_entry: bytes) -> None:
+        if index >= self.imports_count:
+            raise IndexError()
+        data = bytearray(self.data[0])
+        import_entries = data[self.imports_offset:]
+        import_entries[index * 0x10 + 0x0:index * 0x10 + 0x10] = import_entry
+        data[self.imports_offset:] = import_entries
+        self.data[0] = data
+
 
 class BundleV2:
     
@@ -138,6 +153,19 @@ class BundleV2:
             fp.write(self.debug_data)
 
 
+    def change_resource_id(self, old_id: int, new_id: int) -> None:
+        for resource_entry in self.resource_entries:
+            if resource_entry.id == old_id:
+                resource_entry.id = new_id
+                
+            for i in range(resource_entry.imports_count):
+                import_entry = bytearray(resource_entry.get_import_entry(i))
+                import_id = struct.unpack('<Q', import_entry[0x0:0x8])[0]
+                if import_id == old_id:
+                    import_entry[0x0:0x8] = struct.pack('<Q', new_id)
+                    resource_entry.set_import_entry(i, import_entry)
+
+
     @staticmethod
     def _align_offset(offset: int, alignment: int) -> int:
         if (offset % alignment) != 0:
@@ -163,8 +191,8 @@ class BundleV2:
     @staticmethod
     def _compute_imports_hash(resource_entry: ResourceEntry) -> int:
         imports_hash = 0x0000000000000000
-        import_entries = resource_entry.data[0][resource_entry.imports_offset:]
         for i in range(resource_entry.imports_count):
-            import_id = struct.unpack('<Q', import_entries[i * 0x10 + 0x0:i * 0x10 + 0x8])[0]
+            import_entry = resource_entry.get_import_entry(i)
+            import_id = struct.unpack('<Q', import_entry[0x0:0x8])[0]
             imports_hash |= import_id
         return imports_hash

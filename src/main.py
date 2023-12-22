@@ -5,6 +5,9 @@ def main() -> None:
     bundle = BundleV2()
     bundle.load('data/bundle.input')
     bundle.dump_debug_data('data/debug_data.xml')
+    bundle.change_resource_id(0xA118C370, 0xDEADBEEF)
+    bundle.is_compressed = False
+    bundle.debug_data = b''
     bundle.save('data/bundle.output')
 
 
