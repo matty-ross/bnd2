@@ -152,10 +152,11 @@ class BundleV2:
             fp.write(struct.pack('<LLL', *resource_data_offsets))
 
 
-    def dump_debug_data(self, file_name: str) -> None:
-        with open(file_name, 'wb') as fp:
-            if self.debug_data:
-                fp.write(self.debug_data)
+    def get_resource_entry(self, id: int) -> ResourceEntry:
+        for resource_entry in self.resource_entries:
+            if resource_entry.id == id:
+                return resource_entry
+        return None
 
 
     def change_resource_id(self, old_id: int, new_id: int) -> None:
@@ -165,6 +166,20 @@ class BundleV2:
             for import_entry in resource_entry.import_entries:
                 if import_entry.id == old_id:
                     import_entry.id = new_id
+
+
+    def get_missing_imports(self, external_dependencies: list) -> list[ImportEntry]:
+        missing_imports = []
+        for resource_entry in self.resource_entries:
+            for import_entry in resource_entry.import_entries:
+                if self.get_resource_entry(import_entry.id) is not None:
+                    continue
+                for external_dependency in external_dependencies:
+                    if external_dependency.get_resource_entry(import_entry.id) is not None:
+                        break
+                else:
+                    missing_imports.append(import_entry)
+        return missing_imports
 
 
     @staticmethod
