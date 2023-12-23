@@ -18,7 +18,7 @@ def main() -> None:
             old_id = int(input("Old resource ID: "), 16)
             new_id = int(input("New resource ID: "), 16)
             bundle.change_resource_id(old_id, new_id)
-            print(f"Changed resource ID {old_id :X} to {new_id :X}")
+            print(f"Changed resource ID from {old_id :X} to {new_id :X}")
         except KeyboardInterrupt:
             break
 

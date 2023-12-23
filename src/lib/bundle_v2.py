@@ -78,7 +78,8 @@ class BundleV2:
                     import_entry.offset = struct.unpack('<L', data[import_entry_offset + 0x8:import_entry_offset + 0xC])[0]
                     resource_entry.import_entries.append(import_entry)
                 
-                resource_entry.data[0] = data[:imports_offset]
+                if imports_count > 0:
+                    resource_entry.data[0] = data[:imports_offset]
                 
                 self.resource_entries.append(resource_entry)
     
@@ -137,7 +138,8 @@ class BundleV2:
                 for i in range(3):
                     fp.write(struct.pack('<L', disk_offsets[i]))
                 
-                fp.write(struct.pack('<L', len(resource_entry.data[0])))
+                imports_offset = len(resource_entry.data[0]) if len(resource_entry.import_entries) > 0 else 0
+                fp.write(struct.pack('<L', imports_offset))
                 fp.write(struct.pack('<L', resource_entry.type))
                 fp.write(struct.pack('<H', len(resource_entry.import_entries)))
                 fp.write(struct.pack('B', 0))
