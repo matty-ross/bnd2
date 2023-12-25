@@ -20,14 +20,15 @@ class ResourceEntry:
 
 class BundleV2:
     
-    def __init__(self):
+    def __init__(self, file_name: str):
+        self.file_name: str = file_name
         self.compressed: bool = False
         self.debug_data: bytes = b''
         self.resource_entries: list[ResourceEntry] = []
 
     
-    def load(self, file_name: str) -> None:
-        with open(file_name, 'rb') as fp:
+    def load(self) -> None:
+        with open(self.file_name, 'rb') as fp:
             fp.seek(0x0)
             assert fp.read(4) == b'bnd2', "MagicNumber mismatch."
 
@@ -84,8 +85,8 @@ class BundleV2:
                 self.resource_entries.append(resource_entry)
     
     
-    def save(self, file_name: str) -> None:
-        with open(file_name, 'wb') as fp:
+    def save(self) -> None:
+        with open(self.file_name, 'wb') as fp:
             fp.seek(0x0)
             fp.write(b'bnd2')
 
