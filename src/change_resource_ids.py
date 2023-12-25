@@ -22,6 +22,7 @@ def main() -> None:
         bundle.debug_data = b''
 
     bundle.save()
+    
     print("Done.")
 
 
