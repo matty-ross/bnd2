@@ -2,8 +2,8 @@ import io
 import struct
 import zlib
 
-from src.resource_entry import ResourceEntry
-from src.import_entry import ImportEntry
+from bnd2.src.resource_entry import ResourceEntry
+from bnd2.src.import_entry import ImportEntry
 
 
 class BundleV2:
