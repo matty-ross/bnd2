@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 
-from bnd2.import_entry import ImportEntry
+from src.import_entry import ImportEntry
 
 
 @dataclass
