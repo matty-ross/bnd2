@@ -128,7 +128,7 @@ class BundleV2:
                 disk_offsets = [None, None, None]
                 
                 for i in range(3):
-                    fp.write(struct.pack('<L', BundleV2._pack_size_and_alignment(len(resource_entry.data[i]), 0x10)))
+                    fp.write(struct.pack('<L', BundleV2._pack_size_and_alignment(len(resource_entry.data[i]), 0x4)))
                 
                 for i in range(3):
                     data = resource_entry.data[i]
