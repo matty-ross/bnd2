@@ -91,74 +91,80 @@ class BundleV2:
     
     
     def save(self) -> None:
-        assert False, "Unimplemented yet."
-        # with open(self.file_name, 'wb') as fp:
-        #     fp.seek(0x0)
-        #     fp.write(b'bnd2')
+        with open(self.file_name, 'wb') as fp:
+            fp.seek(0x0)
+            fp.write(MAGIC_NUMBER)
 
-        #     debug_data_offset = BundleV2._align_offset(0x28, 0x10)
-        #     resource_entries_offset = BundleV2._align_offset(debug_data_offset + len(self.debug_data), 0x10)
-            
-        #     flags = 0x6
-        #     if self.compressed:
-        #         flags |= 0x1
-        #     if self.debug_data:
-        #         flags |= 0x8
-            
-        #     fp.write(struct.pack('<L', 2))
-        #     fp.write(struct.pack('<L', 1))
-        #     fp.write(struct.pack('<L', debug_data_offset))
-        #     fp.write(struct.pack('<L', len(self.resource_entries)))
-        #     fp.write(struct.pack('<L', resource_entries_offset))
-        #     fp.write(struct.pack('<LLL', 0, 0, 0))
-        #     fp.write(struct.pack('<L', flags))
+            flags = 0x2 | 0x4
+            if self.compressed:
+                flags |= 0x1
+            if self.debug_data:
+                flags |= 0x8
 
-        #     fp.seek(debug_data_offset)
-        #     fp.write(self.debug_data)
+            fp.write(struct.pack('<L', 2))
+            fp.write(struct.pack('<L', 1))
+            fp.write(struct.pack('<L', 0))
+            fp.write(struct.pack('<L', 0))
+            fp.write(struct.pack('<L', 0))
+            fp.write(struct.pack('<LLL', 0, 0, 0))
+            fp.write(struct.pack('<L', flags))
 
-        #     resource_data = [b'', b'', b'']
-        #     resource_data_offsets = [None, None, None]
+            debug_data_offset = BundleV2._align_offset(fp.tell(), 0x10)
+            if self.debug_data:
+                fp.seek(debug_data_offset)
+                fp.write(self.debug_data)
 
-        #     fp.seek(resource_entries_offset)
-        #     for resource_entry in sorted(self.resource_entries, key=lambda resource_entry: resource_entry.id):
-        #         fp.write(struct.pack('<Q', resource_entry.id))
-        #         fp.write(struct.pack('<Q', BundleV2._compute_imports_hash(resource_entry)))
+            resource_entries_offset = BundleV2._align_offset(fp.tell(), 0x10)
+
+            resource_data = [b'', b'', b'']
+            resource_data_offsets = [None, None, None]
+
+            fp.seek(resource_entries_offset)
+            for resource_entry in sorted(self.resource_entries, key=lambda resource_entry: resource_entry.id):
+                fp.write(struct.pack('<Q', resource_entry.id))
+                fp.write(struct.pack('<Q', BundleV2._compute_imports_hash(resource_entry)))
+
+                imports_offset = len(resource_entry.data[0]) if len(resource_entry.import_entries) > 0 else 0
+                disk_offsets = [None, None, None]
                 
-        #         disk_offsets = [None, None, None]
+                for i in range(3):
+                    fp.write(struct.pack('<L', BundleV2._pack_size_and_alignment(len(resource_entry.data[i]), 0x10)))
                 
-        #         for i in range(3):
-        #             fp.write(struct.pack('<L', BundleV2._pack_size_and_alignment(len(resource_entry.data[i]), 0x10)))
+                for i in range(3):
+                    data = resource_entry.data[i]
+                    if i == 0:
+                        # Store the import entries in the data
+                        d = io.BytesIO(data)
+                        for j, import_entry in enumerate(resource_entry.import_entries):
+                            d.seek(imports_offset + j * 0x10)
+                            d.write(struct.pack('<Q', import_entry.id))
+                            d.write(struct.pack('<L', import_entry.offset))
+                        data = d.getvalue()
+                    if self.compressed and data:
+                        data = zlib.compress(data, zlib.Z_BEST_COMPRESSION)
+                    fp.write(struct.pack('<L', BundleV2._pack_size_and_alignment(len(data), 0x0)))
+                    disk_offsets[i] = len(resource_data[i])
+                    resource_data[i] += data + bytes(BundleV2._align_offset(len(data), 0x10) - len(data))
                 
-        #         for i in range(3):
-        #             data = resource_entry.data[i]
-        #             if i == 0 and data:
-        #                 for import_entry in resource_entry.import_entries:
-        #                     data += struct.pack('<Q', import_entry.id)
-        #                     data += struct.pack('<L', import_entry.offset)
-        #                     data += bytes(BundleV2._align_offset(len(data), 0x10) - len(data))
-        #             if self.compressed and data:
-        #                 data = zlib.compress(data, zlib.Z_BEST_COMPRESSION)
-        #             fp.write(struct.pack('<L', BundleV2._pack_size_and_alignment(len(data), 0x1)))
-        #             disk_offsets[i] = len(resource_data[i])
-        #             resource_data[i] += data + bytes(BundleV2._align_offset(len(data), 0x10) - len(data))
+                for i in range(3):
+                    fp.write(struct.pack('<L', disk_offsets[i]))
                 
-        #         for i in range(3):
-        #             fp.write(struct.pack('<L', disk_offsets[i]))
-                
-        #         imports_offset = len(resource_entry.data[0]) if len(resource_entry.import_entries) > 0 else 0
-        #         fp.write(struct.pack('<L', imports_offset))
-        #         fp.write(struct.pack('<L', resource_entry.type))
-        #         fp.write(struct.pack('<H', len(resource_entry.import_entries)))
-        #         fp.write(struct.pack('B', 0))
-        #         fp.write(struct.pack('B', 0))
+                fp.write(struct.pack('<L', imports_offset))
+                fp.write(struct.pack('<L', resource_entry.type))
+                fp.write(struct.pack('<H', len(resource_entry.import_entries)))
+                fp.write(struct.pack('B', 0))
+                fp.write(struct.pack('B', 0))
 
-        #     for i in range(3):
-        #         resource_data_offsets[i] = BundleV2._align_offset(fp.tell(), (0x10, 0x80, 0x80)[i])
-        #         fp.seek(resource_data_offsets[i])
-        #         fp.write(resource_data[i])
+            for i in range(3):
+                resource_data_offsets[i] = BundleV2._align_offset(fp.tell(), (0x10, 0x80, 0x80)[i])
+                fp.seek(resource_data_offsets[i])
+                fp.write(resource_data[i])
 
-        #     fp.seek(0x18)
-        #     fp.write(struct.pack('<LLL', *resource_data_offsets))
+            fp.seek(0xC)
+            fp.write(struct.pack('<L', debug_data_offset))
+            fp.write(struct.pack('<L', len(self.resource_entries)))
+            fp.write(struct.pack('<L', resource_entries_offset))
+            fp.write(struct.pack('<LLL', *resource_data_offsets))
 
 
     def get_resource_entry(self, id: int) -> ResourceEntry:
