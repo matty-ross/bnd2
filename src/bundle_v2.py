@@ -1,15 +1,27 @@
 import io
 import struct
 import zlib
+from dataclasses import dataclass
 
-from .resource_entry import ResourceEntry
-from .import_entry import ImportEntry
+
+MAGIC_NUMBER = b'bnd2'
+
+
+@dataclass
+class ImportEntry:
+    id: int = None
+    offset: int = None
+
+
+@dataclass
+class ResourceEntry:
+    id: int = None
+    type: int = None
+    data: list[bytes] = None
+    import_entries: list[ImportEntry] = None
 
 
 class BundleV2:
-
-    MAGIC_NUMBER = b'bnd2'
-
     
     def __init__(self, file_name: str):
         self.file_name: str = file_name
@@ -21,7 +33,7 @@ class BundleV2:
     def load(self) -> None:
         with open(self.file_name, 'rb') as fp:
             fp.seek(0x0)
-            assert fp.read(4) == BundleV2.MAGIC_NUMBER, "Magic Number mismatch."
+            assert fp.read(4) == MAGIC_NUMBER, "Magic Number mismatch."
 
             _ = struct.unpack('<L', fp.read(4))[0]
             _ = struct.unpack('<L', fp.read(4))[0]
@@ -31,10 +43,10 @@ class BundleV2:
             resource_data_offsets = struct.unpack('<LLL', fp.read(3 * 4))
             flags = struct.unpack('<L', fp.read(4))[0]
             
-            if (flags & 0x1) != 0:
+            if flags & 0x1:
                 self.compressed = True
             
-            if (flags & 0x8) != 0:
+            if flags & 0x8:
                 fp.seek(debug_data_offset)
                 debug_data_size = resource_entries_offset - debug_data_offset
                 self.debug_data = fp.read(debug_data_size).strip(b'\x00')
@@ -42,21 +54,19 @@ class BundleV2:
             for i in range(resource_entries_count):
                 fp.seek(resource_entries_offset + i * 0x40)
                 
-                resource_id = struct.unpack('<Q', fp.read(8))[0]
+                resource_entry = ResourceEntry()
+                resource_entry.id = struct.unpack('<Q', fp.read(8))[0]
                 _ = struct.unpack('<Q', fp.read(8))[0]
                 _ = [BundleV2._unpack_size_and_alignment(dword) for dword in struct.unpack('<LLL', fp.read(3 * 4))]
                 sizes_and_alignments_on_disk = [BundleV2._unpack_size_and_alignment(dword) for dword in struct.unpack('<LLL', fp.read(3 * 4))]
                 disk_offsets = struct.unpack('<LLL', fp.read(3 * 4))
                 imports_offset = struct.unpack('<L', fp.read(4))[0]
-                resource_type_id = struct.unpack('<L', fp.read(4))[0]
+                resource_entry.type = struct.unpack('<L', fp.read(4))[0]
                 imports_count = struct.unpack('<H', fp.read(2))[0]
                 _ = struct.unpack('B', fp.read(1))[0]
                 _ = struct.unpack('B', fp.read(1))[0]
-
-                resource_entry = ResourceEntry()
-                resource_entry.id = resource_id
-                resource_entry.type = resource_type_id
                 
+                resource_entry.data = []
                 for j in range(3):
                     fp.seek(resource_data_offsets[j] + disk_offsets[j])
                     data = fp.read(sizes_and_alignments_on_disk[j][0])
@@ -64,6 +74,7 @@ class BundleV2:
                         data = zlib.decompress(data)
                     resource_entry.data.append(data)
 
+                resource_entry.import_entries = []
                 data = io.BytesIO(resource_entry.data[0])
                 for j in range(imports_count):
                     data.seek(imports_offset + j * 0x10)
@@ -71,12 +82,16 @@ class BundleV2:
                     import_entry.id = struct.unpack('<Q', data.read(8))[0]
                     import_entry.offset = struct.unpack('<L', data.read(4))[0]
                     resource_entry.import_entries.append(import_entry)
+                if imports_count > 0:
+                    # Do not store the import entries in the data
+                    data.truncate(imports_offset)
+                    resource_entry.data[0] = data.getvalue()
                 
                 self.resource_entries.append(resource_entry)
     
     
     def save(self) -> None:
-        return
+        assert False, "Unimplemented yet."
         # with open(self.file_name, 'wb') as fp:
         #     fp.seek(0x0)
         #     fp.write(b'bnd2')
@@ -164,9 +179,9 @@ class BundleV2:
 
     @staticmethod
     def _align_offset(offset: int, alignment: int) -> int:
-        if (offset % alignment) != 0:
-            offset += alignment - (offset % alignment)
-        return offset
+        if (offset % alignment) == 0:
+            return offset
+        return offset + alignment - (offset % alignment)
     
 
     @staticmethod
