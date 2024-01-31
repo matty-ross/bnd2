@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 
 MAGIC_NUMBER = b'bnd2'
+ALIGNMENTS = (0x10, 0x80, 0x80)
 
 
 @dataclass
@@ -24,9 +25,9 @@ class ResourceEntry:
 class BundleV2:
     
     def __init__(self, file_name: str):
-        self.file_name: str = file_name
-        self.compressed: bool = False
-        self.debug_data: bytes = None
+        self.file_name = file_name
+        self.compressed = False
+        self.debug_data = None
         self.resource_entries: list[ResourceEntry] = []
 
     
@@ -35,8 +36,8 @@ class BundleV2:
             fp.seek(0x0)
             assert fp.read(4) == MAGIC_NUMBER, "Magic Number mismatch."
 
-            _ = struct.unpack('<L', fp.read(4))[0]
-            _ = struct.unpack('<L', fp.read(4))[0]
+            _ = fp.read(4)
+            _ = fp.read(4)
             debug_data_offset = struct.unpack('<L', fp.read(4))[0]
             resource_entries_count = struct.unpack('<L', fp.read(4))[0]
             resource_entries_offset = struct.unpack('<L', fp.read(4))[0]
@@ -56,15 +57,15 @@ class BundleV2:
                 
                 resource_entry = ResourceEntry()
                 resource_entry.id = struct.unpack('<Q', fp.read(8))[0]
-                _ = struct.unpack('<Q', fp.read(8))[0]
-                _ = [BundleV2._unpack_size_and_alignment(dword) for dword in struct.unpack('<LLL', fp.read(3 * 4))]
+                _ = fp.read(8)
+                _ = fp.read(3 * 4)
                 sizes_and_alignments_on_disk = [BundleV2._unpack_size_and_alignment(dword) for dword in struct.unpack('<LLL', fp.read(3 * 4))]
                 disk_offsets = struct.unpack('<LLL', fp.read(3 * 4))
                 imports_offset = struct.unpack('<L', fp.read(4))[0]
                 resource_entry.type = struct.unpack('<L', fp.read(4))[0]
                 imports_count = struct.unpack('<H', fp.read(2))[0]
-                _ = struct.unpack('B', fp.read(1))[0]
-                _ = struct.unpack('B', fp.read(1))[0]
+                _ = fp.read(1)
+                _ = fp.read(1)
                 
                 resource_entry.data = []
                 for j in range(3):
@@ -121,10 +122,25 @@ class BundleV2:
 
             fp.seek(resource_entries_offset)
             for resource_entry in sorted(self.resource_entries, key=lambda resource_entry: resource_entry.id):
+                for i in range(3):
+                    data = io.BytesIO(resource_entry.data[i])
+                    data.seek(BundleV2._align_offset(data.tell(), ALIGNMENTS[i]))
+                    resource_entry.data[i] = data.getvalue()
+
+                imports_offset = len(resource_entry.data[0]) if len(resource_entry.import_entries) > 0 else 0
+                
+                # Store the import entries in the data
+                data = io.BytesIO(resource_entry.data[0])
+                data.seek(imports_offset)
+                for import_entry in resource_entry.import_entries:
+                    data.write(struct.pack('<Q', import_entry.id))
+                    data.write(struct.pack('<L', import_entry.offset))
+                    data.write(bytes(4)) # padding
+                resource_entry.data[0] = data.getvalue()
+                
                 fp.write(struct.pack('<Q', resource_entry.id))
                 fp.write(struct.pack('<Q', BundleV2._compute_imports_hash(resource_entry)))
 
-                imports_offset = len(resource_entry.data[0]) if len(resource_entry.import_entries) > 0 else 0
                 disk_offsets = [None, None, None]
                 
                 for i in range(3):
@@ -132,19 +148,11 @@ class BundleV2:
                 
                 for i in range(3):
                     data = resource_entry.data[i]
-                    if i == 0:
-                        # Store the import entries in the data
-                        d = io.BytesIO(data)
-                        for j, import_entry in enumerate(resource_entry.import_entries):
-                            d.seek(imports_offset + j * 0x10)
-                            d.write(struct.pack('<Q', import_entry.id))
-                            d.write(struct.pack('<L', import_entry.offset))
-                        data = d.getvalue()
                     if self.compressed and data:
                         data = zlib.compress(data, zlib.Z_BEST_COMPRESSION)
                     fp.write(struct.pack('<L', BundleV2._pack_size_and_alignment(len(data), 0x0)))
-                    disk_offsets[i] = len(resource_data[i])
-                    resource_data[i] += data + bytes(BundleV2._align_offset(len(data), 0x10) - len(data))
+                    disk_offsets[i] = len(resource_data[i]) if data else 0
+                    resource_data[i] += data + bytes(BundleV2._align_offset(len(data), ALIGNMENTS[i]) - len(data))
                 
                 for i in range(3):
                     fp.write(struct.pack('<L', disk_offsets[i]))
@@ -156,7 +164,7 @@ class BundleV2:
                 fp.write(struct.pack('B', 0))
 
             for i in range(3):
-                resource_data_offsets[i] = BundleV2._align_offset(fp.tell(), (0x10, 0x80, 0x80)[i])
+                resource_data_offsets[i] = BundleV2._align_offset(fp.tell(), ALIGNMENTS[i])
                 fp.seek(resource_data_offsets[i])
                 fp.write(resource_data[i])
 
