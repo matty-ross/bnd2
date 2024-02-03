@@ -186,6 +186,7 @@ class BundleV2:
 
 
     def change_resource_id(self, old_id: int, new_id: int) -> None:
+        assert self.get_resource_entry(new_id) is None, f"Resource entry with ID {new_id :08X} already exists."
         for resource_entry in self.resource_entries:
             if resource_entry.id == old_id:
                 resource_entry.id = new_id
