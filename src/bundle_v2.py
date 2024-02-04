@@ -195,6 +195,15 @@ class BundleV2:
                     import_entry.id = new_id
 
 
+    def get_external_resource_ids(self) -> set[int]:
+        external_resource_ids = set()
+        for resource_entry in self.resource_entries:
+            for import_entry in resource_entry.import_entries:
+                if self.get_resource_entry(import_entry.id) is None:
+                    external_resource_ids.add(import_entry.id)
+        return external_resource_ids
+
+
     @staticmethod
     def _align_offset(offset: int, alignment: int) -> int:
         if (offset % alignment) == 0:
