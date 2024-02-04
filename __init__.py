@@ -1,1 +1,1 @@
-from .src import bundle_v2
+from .src.bundle_v2 import *

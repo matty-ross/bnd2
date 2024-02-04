@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 
 MAGIC_NUMBER = b'bnd2'
-ALIGNMENTS = (0x10, 0x80, 0x80)
+_ALIGNMENTS = (0x10, 0x80, 0x80)
 
 
 @dataclass
@@ -125,7 +125,7 @@ class BundleV2:
                 for i in range(3):
                     data = io.BytesIO(resource_entry.data[i])
                     data.seek(0, io.SEEK_END)
-                    size = BundleV2._align_offset(data.tell(), ALIGNMENTS[i])
+                    size = BundleV2._align_offset(data.tell(), _ALIGNMENTS[i])
                     data.write(bytes(size - data.tell()))
                     resource_entry.data[i] = data.getvalue()
 
@@ -154,7 +154,7 @@ class BundleV2:
                     fp.write(struct.pack('<L', BundleV2._pack_size_and_alignment(len(data), 0x0)))
                     disk_offsets[i] = resource_data[i].tell() if data else 0
                     resource_data[i].write(data)
-                    size = BundleV2._align_offset(resource_data[i].tell(), ALIGNMENTS[i])
+                    size = BundleV2._align_offset(resource_data[i].tell(), _ALIGNMENTS[i])
                     resource_data[i].write(bytes(size - resource_data[i].tell()))
                 
                 for i in range(3):
@@ -167,7 +167,7 @@ class BundleV2:
                 fp.write(struct.pack('B', 0))
 
             for i in range(3):
-                resource_data_offsets[i] = BundleV2._align_offset(fp.tell(), ALIGNMENTS[i])
+                resource_data_offsets[i] = BundleV2._align_offset(fp.tell(), _ALIGNMENTS[i])
                 fp.seek(resource_data_offsets[i])
                 fp.write(resource_data[i].getvalue())
 
