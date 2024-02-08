@@ -1,11 +1,13 @@
 import io
-import struct
 import zlib
 from dataclasses import dataclass
 
+from . import util
+from . import platform_util
+
 
 MAGIC_NUMBER = b'bnd2'
-_ALIGNMENTS = (0x10, 0x80, 0x80)
+ALIGNMENTS = (0x10, 0x80, 0x80)
 
 
 @dataclass
@@ -26,6 +28,7 @@ class BundleV2:
     
     def __init__(self, file_name: str):
         self.file_name = file_name
+        self.platform = platform_util.Platform()
         self.compressed = False
         self.debug_data = None
         self.resource_entries: list[ResourceEntry] = []
@@ -37,12 +40,12 @@ class BundleV2:
             assert fp.read(4) == MAGIC_NUMBER, "Magic Number mismatch."
 
             _ = fp.read(4)
-            _ = fp.read(4)
-            debug_data_offset = struct.unpack('<L', fp.read(4))[0]
-            resource_entries_count = struct.unpack('<L', fp.read(4))[0]
-            resource_entries_offset = struct.unpack('<L', fp.read(4))[0]
-            resource_data_offsets = struct.unpack('<LLL', fp.read(3 * 4))
-            flags = struct.unpack('<L', fp.read(4))[0]
+            self.platform.platform_type = platform_util.PlatformType.from_signature(fp.read(4))
+            debug_data_offset = self.platform.unpack('L', fp.read(4))
+            resource_entries_count = self.platform.unpack('L', fp.read(4))
+            resource_entries_offset = self.platform.unpack('L', fp.read(4))
+            resource_data_offsets = self.platform.unpack('LLL', fp.read(3 * 4))
+            flags = self.platform.unpack('L', fp.read(4))
             
             if flags & 0x1:
                 self.compressed = True
@@ -56,14 +59,14 @@ class BundleV2:
                 fp.seek(resource_entries_offset + i * 0x40)
                 
                 resource_entry = ResourceEntry()
-                resource_entry.id = struct.unpack('<Q', fp.read(8))[0]
+                resource_entry.id = self.platform.unpack('Q', fp.read(8))
                 _ = fp.read(8)
                 _ = fp.read(3 * 4)
-                sizes_and_alignments_on_disk = [BundleV2._unpack_size_and_alignment(dword) for dword in struct.unpack('<LLL', fp.read(3 * 4))]
-                disk_offsets = struct.unpack('<LLL', fp.read(3 * 4))
-                imports_offset = struct.unpack('<L', fp.read(4))[0]
-                resource_entry.type = struct.unpack('<L', fp.read(4))[0]
-                imports_count = struct.unpack('<H', fp.read(2))[0]
+                sizes_and_alignments_on_disk = [util.unpack_size_and_alignment(dword) for dword in self.platform.unpack('LLL', fp.read(3 * 4))]
+                disk_offsets = self.platform.unpack('LLL', fp.read(3 * 4))
+                imports_offset = self.platform.unpack('L', fp.read(4))
+                resource_entry.type = self.platform.unpack('L', fp.read(4))
+                imports_count = self.platform.unpack('H', fp.read(2))
                 _ = fp.read(1)
                 _ = fp.read(1)
                 
@@ -80,8 +83,8 @@ class BundleV2:
                 for j in range(imports_count):
                     data.seek(imports_offset + j * 0x10)
                     import_entry = ImportEntry()
-                    import_entry.id = struct.unpack('<Q', data.read(8))[0]
-                    import_entry.offset = struct.unpack('<L', data.read(4))[0]
+                    import_entry.id = self.platform.unpack('Q', data.read(8))
+                    import_entry.offset = self.platform.unpack('L', data.read(4))
                     resource_entry.import_entries.append(import_entry)
                 if imports_count > 0:
                     # Do not store the import entries in the data
@@ -102,20 +105,20 @@ class BundleV2:
             if self.debug_data:
                 flags |= 0x8
 
-            fp.write(struct.pack('<L', 2))
-            fp.write(struct.pack('<L', 1))
-            fp.write(struct.pack('<L', 0))
-            fp.write(struct.pack('<L', 0))
-            fp.write(struct.pack('<L', 0))
-            fp.write(struct.pack('<LLL', 0, 0, 0))
-            fp.write(struct.pack('<L', flags))
+            fp.write(self.platform.pack('L', 2))
+            fp.write(self.platform.pack('L', self.platform.platform_type.value))
+            fp.write(self.platform.pack('L', 0))
+            fp.write(self.platform.pack('L', 0))
+            fp.write(self.platform.pack('L', 0))
+            fp.write(self.platform.pack('LLL', 0, 0, 0))
+            fp.write(self.platform.pack('L', flags))
 
-            debug_data_offset = BundleV2._align_offset(fp.tell(), 0x10)
+            debug_data_offset = util.align_offset(fp.tell(), 0x10)
             if self.debug_data:
                 fp.seek(debug_data_offset)
                 fp.write(self.debug_data)
 
-            resource_entries_offset = BundleV2._align_offset(fp.tell(), 0x10)
+            resource_entries_offset = util.align_offset(fp.tell(), 0x10)
 
             resource_data = [io.BytesIO() for _ in range(3)]
             resource_data_offsets = [None, None, None]
@@ -125,7 +128,7 @@ class BundleV2:
                 for i in range(3):
                     data = io.BytesIO(resource_entry.data[i])
                     data.seek(0, io.SEEK_END)
-                    size = BundleV2._align_offset(data.tell(), _ALIGNMENTS[i])
+                    size = util.align_offset(data.tell(), ALIGNMENTS[i])
                     data.write(bytes(size - data.tell()))
                     resource_entry.data[i] = data.getvalue()
 
@@ -135,47 +138,47 @@ class BundleV2:
                 data = io.BytesIO(resource_entry.data[0])
                 data.seek(imports_offset)
                 for import_entry in resource_entry.import_entries:
-                    data.write(struct.pack('<Q', import_entry.id))
-                    data.write(struct.pack('<L', import_entry.offset))
+                    data.write(self.platform.pack('Q', import_entry.id))
+                    data.write(self.platform.pack('L', import_entry.offset))
                     data.write(bytes(4)) # padding
                 resource_entry.data[0] = data.getvalue()
                 
-                fp.write(struct.pack('<Q', resource_entry.id))
-                fp.write(struct.pack('<Q', BundleV2._compute_imports_hash(resource_entry)))
+                fp.write(self.platform.pack('Q', resource_entry.id))
+                fp.write(self.platform.pack('Q', BundleV2._compute_imports_hash(resource_entry)))
                 
                 for i in range(3):
-                    fp.write(struct.pack('<L', BundleV2._pack_size_and_alignment(len(resource_entry.data[i]), 0x4)))
+                    fp.write(self.platform.pack('L', util.pack_size_and_alignment(len(resource_entry.data[i]), 0x4)))
                 
                 disk_offsets = [None, None, None]
                 for i in range(3):
                     data = resource_entry.data[i]
                     if self.compressed and data:
                         data = zlib.compress(data, zlib.Z_BEST_COMPRESSION)
-                    fp.write(struct.pack('<L', BundleV2._pack_size_and_alignment(len(data), 0x0)))
+                    fp.write(self.platform.pack('L', util.pack_size_and_alignment(len(data), 0x0)))
                     disk_offsets[i] = resource_data[i].tell() if data else 0
                     resource_data[i].write(data)
-                    size = BundleV2._align_offset(resource_data[i].tell(), _ALIGNMENTS[i])
+                    size = util.align_offset(resource_data[i].tell(), ALIGNMENTS[i])
                     resource_data[i].write(bytes(size - resource_data[i].tell()))
                 
                 for i in range(3):
-                    fp.write(struct.pack('<L', disk_offsets[i]))
+                    fp.write(self.platform.pack('L', disk_offsets[i]))
                 
-                fp.write(struct.pack('<L', imports_offset))
-                fp.write(struct.pack('<L', resource_entry.type))
-                fp.write(struct.pack('<H', len(resource_entry.import_entries)))
-                fp.write(struct.pack('B', 0))
-                fp.write(struct.pack('B', 0))
+                fp.write(self.platform.pack('L', imports_offset))
+                fp.write(self.platform.pack('L', resource_entry.type))
+                fp.write(self.platform.pack('H', len(resource_entry.import_entries)))
+                fp.write(self.platform.pack('B', 0))
+                fp.write(self.platform.pack('B', 0))
 
             for i in range(3):
-                resource_data_offsets[i] = BundleV2._align_offset(fp.tell(), _ALIGNMENTS[i])
+                resource_data_offsets[i] = util.align_offset(fp.tell(), ALIGNMENTS[i])
                 fp.seek(resource_data_offsets[i])
                 fp.write(resource_data[i].getvalue())
 
             fp.seek(0xC)
-            fp.write(struct.pack('<L', debug_data_offset))
-            fp.write(struct.pack('<L', len(self.resource_entries)))
-            fp.write(struct.pack('<L', resource_entries_offset))
-            fp.write(struct.pack('<LLL', *resource_data_offsets))
+            fp.write(self.platform.pack('L', debug_data_offset))
+            fp.write(self.platform.pack('L', len(self.resource_entries)))
+            fp.write(self.platform.pack('L', resource_entries_offset))
+            fp.write(self.platform.pack('LLL', *resource_data_offsets))
 
 
     def get_resource_entry(self, id: int) -> ResourceEntry:
@@ -203,27 +206,6 @@ class BundleV2:
                     external_resource_ids.add(import_entry.id)
         return external_resource_ids
 
-
-    @staticmethod
-    def _align_offset(offset: int, alignment: int) -> int:
-        if (offset % alignment) == 0:
-            return offset
-        return offset + alignment - (offset % alignment)
-    
-
-    @staticmethod
-    def _unpack_size_and_alignment(dword: int) -> tuple[int, int]:
-        size = dword & 0x0FFFFFFF
-        alignment = dword >> 0x1C
-        return size, alignment
-    
-
-    @staticmethod
-    def _pack_size_and_alignment(size: int, alignment: int) -> int:
-        if size == 0:
-            return 0
-        return size | (alignment << 0x1C)
-    
 
     @staticmethod
     def _compute_imports_hash(resource_entry: ResourceEntry) -> int:
