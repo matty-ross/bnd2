@@ -2,10 +2,6 @@ import struct
 from enum import Enum
 
 
-class PlatformTypeException(ValueError):
-    pass
-
-
 class PlatformType(Enum):
     PC = 1
     XBOX_360 = 2
@@ -19,7 +15,7 @@ class PlatformType(Enum):
             return cls.XBOX_360
         if signature == b'\x00\x00\x00\x03':
             return cls.PS3
-        raise PlatformTypeException(f"Unknown platform signature: {signature}")
+        raise ValueError(f"Unknown platform signature: {signature}")
 
 
 class Platform:
@@ -47,4 +43,4 @@ class Platform:
             return '>'
         if self.platform_type == PlatformType.PS3:
             return '>'
-        raise PlatformTypeException(f"Unknown platform type: {self.platform_type}")
+        raise ValueError(f"Unknown platform type: {self.platform_type}")

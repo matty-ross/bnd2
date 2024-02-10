@@ -1,4 +1,3 @@
 from .src import util
-from .src import platform_util
-
-from .src.bundle_v2 import ImportEntry, ResourceEntry, BundleV2
+from .src.bundle_v2 import BundleV2, ResourceEntry, ImportEntry
+from .src.platform_util import Platform, PlatformType

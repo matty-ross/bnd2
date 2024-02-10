@@ -39,7 +39,7 @@ bundle.change_resource_id(0xFACEFEED, 0x12345678)
 bundle.compressed = False
 
 # change platform (this doesn't change the endianness of the resources!)
-bundle.platform.platform_type = bnd2.platform_util.PlatformType.PS3
+bundle.platform.platform_type = bnd2.PlatformType.PS3
 
 # save the bundle
 bundle.save()

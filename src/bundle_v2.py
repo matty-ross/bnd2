@@ -127,9 +127,7 @@ class BundleV2:
             for resource_entry in sorted(self.resource_entries, key=lambda resource_entry: resource_entry.id):
                 for i in range(3):
                     data = io.BytesIO(resource_entry.data[i])
-                    data.seek(0, io.SEEK_END)
-                    size = util.align_offset(data.tell(), ALIGNMENTS[i])
-                    data.write(bytes(size - data.tell()))
+                    util.align_data(data, ALIGNMENTS[i])
                     resource_entry.data[i] = data.getvalue()
 
                 imports_offset = len(resource_entry.data[0]) if len(resource_entry.import_entries) > 0 else 0
@@ -157,8 +155,7 @@ class BundleV2:
                     fp.write(self.platform.pack('L', util.pack_size_and_alignment(len(data), 0x0)))
                     disk_offsets[i] = resource_data[i].tell() if data else 0
                     resource_data[i].write(data)
-                    size = util.align_offset(resource_data[i].tell(), ALIGNMENTS[i])
-                    resource_data[i].write(bytes(size - resource_data[i].tell()))
+                    util.align_data(resource_data[i], ALIGNMENTS[i])
                 
                 for i in range(3):
                     fp.write(self.platform.pack('L', disk_offsets[i]))
