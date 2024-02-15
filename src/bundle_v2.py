@@ -78,18 +78,7 @@ class BundleV2:
                         data = zlib.decompress(data)
                     resource_entry.data.append(data)
 
-                resource_entry.import_entries = []
-                data = io.BytesIO(resource_entry.data[0])
-                for j in range(imports_count):
-                    data.seek(imports_offset + j * 0x10)
-                    import_entry = ImportEntry()
-                    import_entry.id = self.platform.unpack('Q', data.read(8))
-                    import_entry.offset = self.platform.unpack('L', data.read(4))
-                    resource_entry.import_entries.append(import_entry)
-                if imports_count > 0:
-                    # Do not store the import entries in the data
-                    data.truncate(imports_offset)
-                    resource_entry.data[0] = data.getvalue()
+                self.load_import_entries(resource_entry, imports_count, imports_offset)
                 
                 self.resource_entries.append(resource_entry)
     
@@ -131,15 +120,8 @@ class BundleV2:
                     resource_entry.data[i] = data.getvalue()
 
                 imports_offset = len(resource_entry.data[0]) if len(resource_entry.import_entries) > 0 else 0
-                
-                # Store the import entries in the data
-                data = io.BytesIO(resource_entry.data[0])
-                data.seek(imports_offset)
-                for import_entry in resource_entry.import_entries:
-                    data.write(self.platform.pack('Q', import_entry.id))
-                    data.write(self.platform.pack('L', import_entry.offset))
-                    data.write(bytes(4)) # padding
-                resource_entry.data[0] = data.getvalue()
+
+                self.store_import_entries(resource_entry, imports_offset)
                 
                 fp.write(self.platform.pack('Q', resource_entry.id))
                 fp.write(self.platform.pack('Q', BundleV2._compute_imports_hash(resource_entry)))
@@ -202,6 +184,30 @@ class BundleV2:
                 if self.get_resource_entry(import_entry.id) is None:
                     external_resource_ids.add(import_entry.id)
         return external_resource_ids
+
+
+    def load_import_entries(self, resource_entry: ResourceEntry, imports_count: int, imports_offset: int) -> None:
+        resource_entry.import_entries = []
+        data = io.BytesIO(resource_entry.data[0])
+        for j in range(imports_count):
+            data.seek(imports_offset + j * 0x10)
+            import_entry = ImportEntry()
+            import_entry.id = self.platform.unpack('Q', data.read(8))
+            import_entry.offset = self.platform.unpack('L', data.read(4))
+            resource_entry.import_entries.append(import_entry)
+        if imports_count > 0:
+            data.truncate(imports_offset)
+            resource_entry.data[0] = data.getvalue()
+
+
+    def store_import_entries(self, resource_entry: ResourceEntry, imports_offset: int) -> None:
+        data = io.BytesIO(resource_entry.data[0])
+        data.seek(imports_offset)
+        for import_entry in resource_entry.import_entries:
+            data.write(self.platform.pack('Q', import_entry.id))
+            data.write(self.platform.pack('L', import_entry.offset))
+            data.write(bytes(4)) # padding
+        resource_entry.data[0] = data.getvalue()
 
 
     @staticmethod
