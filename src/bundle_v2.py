@@ -25,7 +25,7 @@ class ResourceEntry:
 
 
 class BundleV2:
-    
+
     def __init__(self, file_name: str):
         self.file_name = file_name
         self.platform = platform_util.Platform()
@@ -33,7 +33,7 @@ class BundleV2:
         self.debug_data = None
         self.resource_entries: list[ResourceEntry] = []
 
-    
+
     def load(self) -> None:
         with open(self.file_name, 'rb') as fp:
             fp.seek(0x0)
@@ -46,18 +46,18 @@ class BundleV2:
             resource_entries_offset = self.platform.unpack('L', fp.read(4))
             resource_data_offsets = self.platform.unpack('LLL', fp.read(3 * 4))
             flags = self.platform.unpack('L', fp.read(4))
-            
+
             if flags & 0x1:
                 self.compressed = True
-            
+
             if flags & 0x8:
                 fp.seek(debug_data_offset)
                 debug_data_size = resource_entries_offset - debug_data_offset
                 self.debug_data = fp.read(debug_data_size).strip(b'\x00')
-        
+
             for i in range(resource_entries_count):
                 fp.seek(resource_entries_offset + i * 0x40)
-                
+
                 resource_entry = ResourceEntry()
                 resource_entry.id = self.platform.unpack('Q', fp.read(8))
                 _ = fp.read(8)
@@ -69,7 +69,7 @@ class BundleV2:
                 imports_count = self.platform.unpack('H', fp.read(2))
                 _ = fp.read(1)
                 _ = fp.read(1)
-                
+
                 resource_entry.data = []
                 for j in range(3):
                     fp.seek(resource_data_offsets[j] + disk_offsets[j])
@@ -79,10 +79,10 @@ class BundleV2:
                     resource_entry.data.append(data)
 
                 self.load_import_entries(resource_entry, imports_count, imports_offset)
-                
+
                 self.resource_entries.append(resource_entry)
-    
-    
+
+
     def save(self) -> None:
         with open(self.file_name, 'wb') as fp:
             fp.seek(0x0)
@@ -122,13 +122,13 @@ class BundleV2:
                 imports_offset = len(resource_entry.data[0]) if len(resource_entry.import_entries) > 0 else 0
 
                 self.store_import_entries(resource_entry, imports_offset)
-                
+
                 fp.write(self.platform.pack('Q', resource_entry.id))
                 fp.write(self.platform.pack('Q', BundleV2._compute_imports_hash(resource_entry)))
-                
+
                 for i in range(3):
                     fp.write(self.platform.pack('L', util.pack_size_and_alignment(len(resource_entry.data[i]), 0x4)))
-                
+
                 disk_offsets = [None, None, None]
                 for i in range(3):
                     data = resource_entry.data[i]
@@ -138,10 +138,10 @@ class BundleV2:
                     disk_offsets[i] = resource_data[i].tell() if data else 0
                     resource_data[i].write(data)
                     util.align_data(resource_data[i], ALIGNMENTS[i])
-                
+
                 for i in range(3):
                     fp.write(self.platform.pack('L', disk_offsets[i]))
-                
+
                 fp.write(self.platform.pack('L', imports_offset))
                 fp.write(self.platform.pack('L', resource_entry.type))
                 fp.write(self.platform.pack('H', len(resource_entry.import_entries)))

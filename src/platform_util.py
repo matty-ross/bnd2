@@ -9,13 +9,14 @@ class PlatformType(Enum):
 
     @classmethod
     def from_signature(cls, signature: bytes):
-        if signature == b'\x01\x00\x00\x00':
-            return cls.PC
-        if signature == b'\x00\x00\x00\x02':
-            return cls.XBOX_360
-        if signature == b'\x00\x00\x00\x03':
-            return cls.PS3
-        raise ValueError(f"Unknown platform signature: {signature}")
+        match signature:
+            case b'\x01\x00\x00\x00':
+                return cls.PC
+            case b'\x00\x00\x00\x02':
+                return cls.XBOX_360
+            case b'\x00\x00\x00\x03':
+                return cls.PS3
+        raise ValueError(f"Unknown platform signature: {signature}.")
 
 
 class Platform:
@@ -37,10 +38,11 @@ class Platform:
 
 
     def _get_platform_endianness(self) -> str:
-        if self.platform_type == PlatformType.PC:
-            return '<'
-        if self.platform_type == PlatformType.XBOX_360:
-            return '>'
-        if self.platform_type == PlatformType.PS3:
-            return '>'
-        raise ValueError(f"Unknown platform type: {self.platform_type}")
+        match self.platform_type:
+            case PlatformType.PC:
+                return '<'
+            case PlatformType.XBOX_360:
+                return '>'
+            case PlatformType.PS3:
+                return '>'
+        raise ValueError(f"Unknown platform type.")
