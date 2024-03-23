@@ -78,7 +78,7 @@ class BundleV2:
                         data = zlib.decompress(data)
                     resource_entry.data.append(data)
 
-                self.load_import_entries(resource_entry, imports_count, imports_offset)
+                self.load_import_entries(resource_entry, imports_offset, imports_count)
 
                 self.resource_entries.append(resource_entry)
 
@@ -109,7 +109,7 @@ class BundleV2:
 
             resource_entries_offset = util.align_offset(fp.tell(), 0x10)
 
-            resource_data = [io.BytesIO() for _ in range(3)]
+            resource_data = [io.BytesIO(), io.BytesIO(), io.BytesIO()]
             resource_data_offsets = [None, None, None]
 
             fp.seek(resource_entries_offset)
@@ -186,11 +186,11 @@ class BundleV2:
         return external_resource_ids
 
 
-    def load_import_entries(self, resource_entry: ResourceEntry, imports_count: int, imports_offset: int) -> None:
+    def load_import_entries(self, resource_entry: ResourceEntry, imports_offset: int, imports_count: int) -> None:
         resource_entry.import_entries = []
         data = io.BytesIO(resource_entry.data[0])
-        for j in range(imports_count):
-            data.seek(imports_offset + j * 0x10)
+        for i in range(imports_count):
+            data.seek(imports_offset + i * 0x10)
             import_entry = ImportEntry()
             import_entry.id = self.platform.unpack('Q', data.read(8))
             import_entry.offset = self.platform.unpack('L', data.read(4))

@@ -21,5 +21,6 @@ def pack_size_and_alignment(size: int, alignment: int) -> int:
 
 def align_data(data: io.BytesIO, alignment: int) -> None:
     data.seek(0, io.SEEK_END)
-    new_size = align_offset(data.tell(), alignment)
-    data.write(bytes(new_size - data.tell()))
+    old_size = data.tell()
+    new_size = align_offset(old_size, alignment)
+    data.write(bytes(new_size - old_size))
