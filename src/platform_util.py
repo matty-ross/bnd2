@@ -16,7 +16,7 @@ class PlatformType(Enum):
                 return cls.XBOX_360
             case b'\x00\x00\x00\x03':
                 return cls.PS3
-        raise ValueError(f"Unknown platform signature: {signature}.")
+        raise Exception(f"Unknown platform signature: {signature}.")
 
 
 class Platform:
@@ -45,4 +45,4 @@ class Platform:
                 return '>'
             case PlatformType.PS3:
                 return '>'
-        raise ValueError(f"Unknown platform type.")
+        raise Exception("Unknown platform type.")

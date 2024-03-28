@@ -37,7 +37,8 @@ class BundleV2:
     def load(self) -> None:
         with open(self.file_name, 'rb') as fp:
             fp.seek(0x0)
-            assert fp.read(4) == MAGIC_NUMBER, "Magic Number mismatch."
+            if fp.read(4) != MAGIC_NUMBER:
+                raise Exception("Magic Number mismatch.")
 
             _ = fp.read(4)
             self.platform.platform_type = platform_util.PlatformType.from_signature(fp.read(4))
@@ -168,7 +169,9 @@ class BundleV2:
 
 
     def change_resource_id(self, old_id: int, new_id: int) -> None:
-        assert self.get_resource_entry(new_id) is None, f"Resource entry with ID {new_id :08X} already exists."
+        if self.get_resource_entry(new_id) is not None:
+            raise Exception(f"Resource entry with ID {new_id :08X} already exists.")
+        
         for resource_entry in self.resource_entries:
             if resource_entry.id == old_id:
                 resource_entry.id = new_id
